@@ -50,10 +50,10 @@ export default function OnboardingForm() {
     resolver: zodResolver(formSchema),
     mode: "onChange",
     defaultValues: {
-      language: "English",
-      source: "Website",
+      language: "English" as const,
+      source: "Website" as const,
       contractDate: new Date().toISOString().split("T")[0],
-      clientType: "private",
+      clientType: "private" as const,
 
       firstName: "",
       lastName: "",
@@ -64,12 +64,12 @@ export default function OnboardingForm() {
       companyAddress: "",
 
       program: "Private tuition",
-      courseLang: "German",
+      courseLang: "German" as const,
       level: "",
       lessonType: "",
-      totalHours: undefined,
-      pricePerHour: undefined,
-      hoursPerLesson: "60",
+      totalHours: 0,
+      pricePerHour: 0,
+      hoursPerLesson: "60" as const,
       discount: 0,
       scheduleText: "",
 
@@ -77,7 +77,7 @@ export default function OnboardingForm() {
       courseEnd: "",
       validUntil: "",
       pay1Date: "",
-      pay1Amount: undefined,
+      pay1Amount: 0,
       pay2Date: "",
       pay2Amount: undefined,
       pay3Date: "",
@@ -266,13 +266,13 @@ export default function OnboardingForm() {
             </AnimatePresence>
           </CardContent>
           <CardFooter className="sticky bottom-0 bg-white/90 backdrop-blur-sm p-6 border-t flex gap-3">
-              <Button type="button" variant="outline" className="w-1/2" onClick={prev} disabled={currentStep === 0}>
+              <Button type="button" variant="outline" className="flex-1" onClick={prev} disabled={currentStep === 0}>
                 Back
               </Button>
               {currentStep === steps.length - 1 ? (
-                <Button type="submit" className="w-1/2">Submit</Button>
+                <Button type="submit" className="flex-1">Submit</Button>
               ) : (
-                <Button type="button" className="w-1/2" onClick={next}>Continue</Button>
+                <Button type="button" className="flex-1" onClick={next}>Continue</Button>
               )}
           </CardFooter>
           </form>
