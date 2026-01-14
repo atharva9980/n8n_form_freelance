@@ -47,7 +47,7 @@ export default function OnboardingForm() {
   const { toast } = useToast();
 
   const form = useForm<FormData>({
-    resolver: zodResolver(formSchema),
+    resolver: zodResolver(formSchema) as any ,
     mode: "onChange",
     defaultValues: {
       language: "English" as const,
