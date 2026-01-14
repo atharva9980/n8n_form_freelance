@@ -5,7 +5,7 @@ import { useForm, type FieldPath, type UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion, AnimatePresence } from "framer-motion";
 
-import { formSchema, FormData } from "@/lib/schema";
+import { formSchema, type FormData } from "@/lib/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -53,8 +53,7 @@ export default function OnboardingForm() {
       language: "English" as const,
       source: "Website" as const,
       contractDate: new Date().toISOString().split("T")[0],
-      clientType: "private" as const,
-
+      clientType: "private",
       firstName: "",
       lastName: "",
       email: "",
@@ -62,25 +61,23 @@ export default function OnboardingForm() {
       address: "",
       companyName: "",
       companyAddress: "",
-
       program: "Private tuition",
-      courseLang: "German" as const,
+      courseLang: "German",
       level: "",
       lessonType: "",
-      totalHours: 0,
-      pricePerHour: 0,
-      hoursPerLesson: "60" as const,
+      totalHours: undefined,
+      pricePerHour: undefined,
+      hoursPerLesson: "60",
       discount: 0,
       scheduleText: "",
-
       courseStart: "",
       courseEnd: "",
       validUntil: "",
       pay1Date: "",
-      pay1Amount: 0,
+      pay1Amount: undefined,
       pay2Date: "",
-      pay2Amount: undefined,
       pay3Date: "",
+      pay2Amount: undefined,
       pay3Amount: undefined,
     },
   });
@@ -127,7 +124,7 @@ export default function OnboardingForm() {
   };
 
   return (
-    <Card className="w-full max-w-xl mx-auto rounded-2xl shadow-sm border border-slate-200 bg-white">
+    <Card className="w-full max-w-xl mx-auto rounded-2xl shadow-sm border border-slate-200 bg-white my-8">
       <CardHeader className="pb-6 space-y-4">
         <div className="flex items-center justify-between">
           <span className="text-xs font-medium text-slate-500">
@@ -158,7 +155,7 @@ export default function OnboardingForm() {
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)}>
-          <CardContent>
+          <CardContent className="min-h-[400px]">
             <AnimatePresence mode="wait">
               <motion.div
                 key={currentStep}
@@ -182,16 +179,16 @@ export default function OnboardingForm() {
                           <FormLabel className="text-sm font-medium text-slate-700">Client Type</FormLabel>
                           <RadioGroup
                             onValueChange={field.onChange}
-                            defaultValue={field.value}
+                            value={field.value}
                             className="grid grid-cols-2 gap-3"
                           >
                             {["private", "business"].map((v) => (
                               <label
                                 key={v}
-                                className={`flex items-center justify-center rounded-lg border p-3 text-sm cursor-pointer
+                                className={`flex items-center justify-center rounded-lg border p-3 text-sm cursor-pointer transition-all
                                 ${field.value === v
-                                  ? "border-primary bg-primary/5"
-                                  : "border-slate-200 bg-white"
+                                  ? "border-primary bg-primary/5 ring-1 ring-primary"
+                                  : "border-slate-200 bg-white hover:bg-slate-50"
                                 }`}
                               >
                                 <RadioGroupItem value={v} className="hidden" />
@@ -216,7 +213,7 @@ export default function OnboardingForm() {
                     <TextareaField form={form} name="address" label="Address" />
 
                     {clientType === "business" && (
-                      <div className="space-y-5">
+                      <div className="space-y-5 pt-4 border-t">
                         <TextField form={form} name="companyName" label="Company Name" />
                         <TextareaField form={form} name="companyAddress" label="Company Address" />
                       </div>
@@ -245,17 +242,17 @@ export default function OnboardingForm() {
                     <DateField form={form} name="courseEnd" label="Course End" />
                     <DateField form={form} name="validUntil" label="Valid Until" />
 
-                    <div className="space-y-4">
-                      <p className="text-sm font-medium text-slate-700">Payment Plan</p>
-                      <div className="grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-4 border border-slate-200">
+                    <div className="space-y-4 pt-4 border-t">
+                      <p className="text-sm font-semibold text-slate-900">Payment Plan</p>
+                      <div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-4 border border-slate-200">
                         <DateField form={form} name="pay1Date" label="Payment 1 Date" />
                         <NumberField form={form} name="pay1Amount" label="Amount" />
                       </div>
-                      <div className="grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-4 border border-slate-200">
+                      <div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-4 border border-slate-200">
                         <DateField form={form} name="pay2Date" label="Payment 2 Date (Optional)" />
                         <NumberField form={form} name="pay2Amount" label="Amount" />
                       </div>
-                      <div className="grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-4 border border-slate-200">
+                      <div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-4 border border-slate-200">
                         <DateField form={form} name="pay3Date" label="Payment 3 Date (Optional)" />
                         <NumberField form={form} name="pay3Amount" label="Amount" />
                       </div>
@@ -265,14 +262,14 @@ export default function OnboardingForm() {
               </motion.div>
             </AnimatePresence>
           </CardContent>
-          <CardFooter className="sticky bottom-0 bg-white/90 backdrop-blur-sm p-6 border-t flex gap-3">
-              <Button type="button" variant="outline" className="flex-1" onClick={prev} disabled={currentStep === 0}>
+          <CardFooter className="bg-white p-6 border-t flex gap-3">
+              <Button type="button" variant="outline" className="flex-1 h-11" onClick={prev} disabled={currentStep === 0}>
                 Back
               </Button>
               {currentStep === steps.length - 1 ? (
-                <Button type="submit" className="flex-1">Submit</Button>
+                <Button type="submit" className="flex-1 h-11">Submit</Button>
               ) : (
-                <Button type="button" className="flex-1" onClick={next}>Continue</Button>
+                <Button type="button" className="flex-1 h-11" onClick={next}>Continue</Button>
               )}
           </CardFooter>
           </form>
@@ -283,13 +280,13 @@ export default function OnboardingForm() {
 
 /* ------------------ Helpers ------------------ */
 
-type FieldCommonProps = {
+interface FieldCommonProps {
   form: UseFormReturn<FormData>;
   name: FieldPath<FormData>;
   label: string;
-};
+}
 
-function TextField({ form, name, label, type = "text" }: FieldCommonProps & { type?: React.HTMLInputTypeAttribute }) {
+function TextField({ form, name, label, type = "text" }: FieldCommonProps & { type?: string }) {
   return (
     <FormField
       control={form.control}
@@ -298,7 +295,12 @@ function TextField({ form, name, label, type = "text" }: FieldCommonProps & { ty
         <FormItem>
           <FormLabel className="text-sm font-medium text-slate-700">{label}</FormLabel>
           <FormControl>
-            <Input {...field} type={type} className="h-11 rounded-lg bg-slate-50 border-slate-200 focus:border-primary focus:ring-0" />
+            <Input 
+              {...field} 
+              type={type} 
+              value={(field.value as string) || ""} 
+              className="h-11 rounded-lg bg-slate-50 border-slate-200 focus:border-primary focus:ring-0" 
+            />
           </FormControl>
           <FormMessage />
         </FormItem>
@@ -316,7 +318,11 @@ function TextareaField({ form, name, label }: FieldCommonProps) {
         <FormItem>
           <FormLabel className="text-sm font-medium text-slate-700">{label}</FormLabel>
           <FormControl>
-            <Textarea {...field} className="min-h-[90px] rounded-lg bg-slate-50 border-slate-200 focus:border-primary focus:ring-0" />
+            <Textarea 
+              {...field} 
+              value={(field.value as string) || ""}
+              className="min-h-[90px] rounded-lg bg-slate-50 border-slate-200 focus:border-primary focus:ring-0" 
+            />
           </FormControl>
           <FormMessage />
         </FormItem>
@@ -325,7 +331,7 @@ function TextareaField({ form, name, label }: FieldCommonProps) {
   );
 }
 
-function SelectField({ form, name, label, items }: FieldCommonProps & { items: readonly string[] }) {
+function SelectField({ form, name, label, items }: FieldCommonProps & { items: string[] }) {
   return (
     <FormField
       control={form.control}
@@ -333,14 +339,14 @@ function SelectField({ form, name, label, items }: FieldCommonProps & { items: r
       render={({ field }) => (
         <FormItem>
           <FormLabel className="text-sm font-medium text-slate-700">{label}</FormLabel>
-          <Select onValueChange={field.onChange} value={field.value}>
+          <Select onValueChange={field.onChange} value={(field.value as string) || undefined}>
             <FormControl>
               <SelectTrigger className="h-11 rounded-lg bg-slate-50 border-slate-200">
-                <SelectValue />
+                <SelectValue placeholder={`Select ${label.toLowerCase()}`} />
               </SelectTrigger>
             </FormControl>
             <SelectContent>
-              {items.map((i: string) => (
+              {items.map((i) => (
                 <SelectItem key={i} value={i}>{i}</SelectItem>
               ))}
             </SelectContent>
@@ -366,7 +372,7 @@ function NumberField({ form, name, label }: FieldCommonProps) {
               className="h-11 rounded-lg bg-slate-50 border-slate-200 focus:border-primary focus:ring-0"
               value={field.value ?? ""}
               onChange={(e) =>
-                field.onChange(e.target.value === "" ? undefined : +e.target.value)
+                field.onChange(e.target.value === "" ? undefined : Number(e.target.value))
               }
             />
           </FormControl>
@@ -386,7 +392,12 @@ function DateField({ form, name, label }: FieldCommonProps) {
         <FormItem>
           <FormLabel className="text-sm font-medium text-slate-700">{label}</FormLabel>
           <FormControl>
-            <Input type="date" {...field} value={field.value || ''} className="h-11 rounded-lg bg-slate-50 border-slate-200 focus:border-primary focus:ring-0" />
+            <Input 
+              type="date" 
+              {...field} 
+              value={(field.value as string) || ''} 
+              className="h-11 rounded-lg bg-slate-50 border-slate-200 focus:border-primary focus:ring-0" 
+            />
           </FormControl>
           <FormMessage />
         </FormItem>
