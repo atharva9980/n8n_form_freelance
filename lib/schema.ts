@@ -12,20 +12,52 @@ export const formSchema = z.object({
   lastName: z.string().min(1, "Last name is required."),
   email: z.string().email("Invalid email address."),
   phone: z.string().min(1, "Phone number is required."),
-  address: z.string().min(1, "Address is required."),
+  
+  
+  // New Structured Client Address
+  addrStreet: z.string().min(1, "Street is required."),
+  addrHouse: z.string().min(1, "House number is required."),
+  addrApt: z.string().optional(),
+  addrCity: z.string().min(1, "City is required."),
+  addrZip: z.string().min(1, "Zip code is required."),
+  addrState: z.string().min(1, "State is required."),
+  addrCountry: z.string().min(1, "Country is required."),
+
+  // Company Info (Optional)
   companyName: z.string().optional(),
-  companyAddress: z.string().optional(),
+  // New Structured Company Address (Optional)
+  compStreet: z.string().optional(),
+  compHouse: z.string().optional(),
+  compApt: z.string().optional(),
+  compCity: z.string().optional(),
+  compZip: z.string().optional(),
+  compState: z.string().optional(),
+  compCountry: z.string().optional(),
 
   // Step 3: Course Info
   program: z.string().default("Private tuition"),
   courseLang: z.enum(["German", "Spanish"]).default("German"),
-  level: z.string().min(1, "Level is required."),
-  lessonType: z.string().min(1, "Lesson type is required."),
-  totalHours: z.coerce.number().min(1, "Must be at least 1 hour."),
-  pricePerHour: z.coerce.number().min(1, "Price must be greater than 0."),
-  hoursPerLesson: z.enum(["45", "60", "90", "120"]).default("60"),
+  
+  level: z.array(z.string()).min(1, "Select at least one level."),
+  
+  
+  lessons: z.array(z.object({
+    type: z.enum(["Online Lessons", "Live Lessons"]),
+    format: z.enum(["45", "60", "90", "120"]).default("60"),
+    totalHours: z.coerce.number().min(1, "Hours required"),
+    pricePerHour: z.coerce.number().min(1, "Price required"),
+    schedule: z.string().min(1, "Schedule required"), 
+  })).min(1, "Add at least one lesson type."),
+
   discount: z.coerce.number().min(0, "Discount cannot be negative.").default(0),
-  scheduleText: z.string().min(1, "Schedule is required."),
+
+  
+ 
+  lessonType: z.string().optional(),
+  totalHours: z.coerce.number().optional(),
+  pricePerHour: z.coerce.number().optional(),
+  hoursPerLesson: z.string().optional(),
+  scheduleText: z.string().optional(),
   
   // Step 4: Billing & Dates
   courseStart: z.string().min(1, "Course start date is required."),
@@ -40,23 +72,35 @@ export const formSchema = z.object({
 }).superRefine((data, ctx) => {
   // Conditional validation for business clients
   if (data.clientType === 'business') {
+    // 1. Check Company Name
     if (!data.companyName) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['companyName'],
-        message: 'Company name is required for business clients.',
+        message: 'Company name is required.',
       });
     }
-    if (!data.companyAddress) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['companyAddress'],
-        message: 'Company address is required for business clients.',
-      });
+
+    // 2. Check Company Address Fields individually
+    // We add an issue for EACH missing field so the specific input turns red
+    if (!data.compStreet) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['compStreet'], message: 'Street is required.' });
+    }
+    if (!data.compHouse) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['compHouse'], message: 'House number is required.' });
+    }
+    if (!data.compCity) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['compCity'], message: 'City is required.' });
+    }
+    if (!data.compZip) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['compZip'], message: 'Zip code is required.' });
+    }
+    if (!data.compCountry) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['compCountry'], message: 'Country is required.' });
     }
   }
 
-  // Date logic validation
+  // Date logic validation (Unchanged)
   if (data.courseStart && data.courseEnd) {
     const courseStartDate = new Date(data.courseStart);
     const courseEndDate = new Date(data.courseEnd);
@@ -81,5 +125,4 @@ export const formSchema = z.object({
     }
   }
 });
-
 export type FormData = z.infer<typeof formSchema>;
