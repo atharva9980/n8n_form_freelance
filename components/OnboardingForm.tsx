@@ -571,7 +571,7 @@ function MultiSelectField({ form, name, label, items }: FieldCommonProps & { ite
           <div className="mb-4">
             <FormLabel className="text-sm font-medium text-slate-700">{label}</FormLabel>
           </div>
-          <div className="grid grid-cols-3 gap-4"> {/* Grid for nice layout */}
+          <div className="grid grid-cols-3 gap-4"> 
             {items.map((item) => (
               <FormField
                 key={item}
@@ -585,12 +585,16 @@ function MultiSelectField({ form, name, label, items }: FieldCommonProps & { ite
                     >
                       <FormControl>
                         <Checkbox
-                          checked={field.value?.includes(item)}
+                          // 👇 FIX 1: Tell TypeScript this is definitely an array
+                          checked={(field.value as string[])?.includes(item)}
                           onCheckedChange={(checked) => {
+                            // 👇 FIX 2: Treat current value as array (or empty array)
+                            const current = (field.value as string[]) || [];
                             return checked
-                              ? field.onChange([...(field.value || []), item])
+                              ? field.onChange([...current, item])
                               : field.onChange(
-                                  field.value?.filter((value: string) => value !== item)
+                                  // 👇 FIX 3: Filter the array
+                                  current.filter((value: string) => value !== item)
                                 );
                           }}
                         />
