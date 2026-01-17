@@ -499,7 +499,7 @@ function NumberField({ form, name, label }: FieldCommonProps) {
             <Input
               type="number"
               className="h-11 rounded-lg bg-slate-50 border-slate-200 focus:border-primary focus:ring-0"
-              value={field.value ?? ""}
+              value={(field.value as any) ?? ""}
               onChange={(e) =>
                 field.onChange(e.target.value === "" ? undefined : Number(e.target.value))
               }
