@@ -163,8 +163,8 @@ export default function OnboardingForm() {
       // D. Generate Excel Payment String
       // Format: "2026-01-01 100; 2026-02-01 200;"
       const paymentString = data.payments
-        .map((p: any) => `${p.date} ${p.amount}`)
-        .join("; ");
+        .map((p: any) => `${p.date}: ${p.amount} CHF`)
+        .join(";  ");
 
       // --- 3. PREPARE PAYLOAD ---
       const payload = {
