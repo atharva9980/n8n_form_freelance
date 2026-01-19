@@ -246,10 +246,25 @@ export default function OnboardingForm() {
             </AnimatePresence>
           </CardContent>
           <CardFooter className="bg-slate-50 p-6 border-t flex gap-3">
-            <Button type="button" variant="ghost" className="flex-1 h-12 font-semibold" onClick={prev} disabled={currentStepIndex === 0}>Back</Button>
-            <Button type="button" className="flex-[2] h-12 font-bold shadow-md transition-all active:scale-95" onClick={currentStepIndex === steps.length - 1 ? form.handleSubmit(onSubmit) : next}>
-              {currentStepIndex === steps.length - 1 ? "Complete & Send Contract" : "Continue to Next Step"}
-            </Button>
+            <Button 
+  type="button" 
+  className="flex-[2] h-12 font-bold shadow-md transition-all active:scale-95" 
+  onClick={
+    currentStepIndex === steps.length - 1 
+      // Add the second argument (onInvalid) to see what is failing
+      ? form.handleSubmit(onSubmit, (errors) => {
+          console.error("🚨 VALIDATION FAILED:", errors);
+          toast({ 
+            variant: "destructive", 
+            title: "Validation Error", 
+            description: "Check the console (F12) to see which field is invalid." 
+          });
+        }) 
+      : next
+  }
+>
+  {currentStepIndex === steps.length - 1 ? "Complete & Send Contract" : "Continue to Next Step"}
+</Button>
           </CardFooter>
         </form>
       </Form>
@@ -298,17 +313,26 @@ function AddressGroup({ form, prefix, label }: any) {
     <div className="space-y-4 pt-2">
       <p className="text-sm font-bold text-slate-800">{label}</p>
       <div className="grid grid-cols-6 gap-3">
+        {/* Row 1: Street and House Number */}
         <div className="col-span-4"><TextField form={form} name={`${prefix}Street`} label="Street" /></div>
         <div className="col-span-2"><TextField form={form} name={`${prefix}House`} label="No." /></div>
-        <div className="col-span-3"><TextField form={form} name={`${prefix}City`} label="City" /></div>
-        <div className="col-span-3"><TextField form={form} name={`${prefix}Zip`} label="Zip" /></div>
+        
+        {/* Row 2: City, State (NEW), and Zip */}
+        <div className="col-span-2"><TextField form={form} name={`${prefix}City`} label="City" /></div>
+        <div className="col-span-2">
+            {/* 🚨 THIS WAS MISSING BEFORE */}
+            <TextField form={form} name={`${prefix}State`} label="State/Province" />
+        </div>
+        <div className="col-span-2"><TextField form={form} name={`${prefix}Zip`} label="Zip" /></div>
+        
+        {/* Row 3: Country */}
         <div className="col-span-6">
           <FormField control={form.control} name={`${prefix}Country`} render={({ field }) => (
             <FormItem className="space-y-1.5">
               <FormLabel className="text-xs font-bold text-slate-600 uppercase">Country</FormLabel>
               <Select onValueChange={field.onChange} defaultValue={field.value}>
                 <FormControl><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue placeholder="Select country" /></SelectTrigger></FormControl>
-                <SelectContent>{options.map(c => <SelectItem key={c.value} value={c.label}>{c.label}</SelectItem>)}</SelectContent>
+                <SelectContent>{options.map((c: any) => <SelectItem key={c.value} value={c.label}>{c.label}</SelectItem>)}</SelectContent>
               </Select>
             </FormItem>
           )} />

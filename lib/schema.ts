@@ -20,7 +20,8 @@ export const formSchema = z.object({
   addrApt: z.string().optional(),
   addrCity: z.string().min(1, "City is required."),
   addrZip: z.string().min(1, "Zip code is required."),
-  addrState: z.string().min(1, "State is required."),
+  addrState: z.string().optional(),
+
   addrCountry: z.string().min(1, "Country is required."),
 
   // Company Info (Optional - Validated in superRefine)
