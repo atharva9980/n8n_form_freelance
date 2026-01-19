@@ -3,9 +3,9 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion, AnimatePresence } from "framer-motion";
 import PhoneInput from "react-phone-number-input";
+import "react-phone-number-input/style.css"; // Ensure styles are imported
 import countryList from "react-select-country-list";
 
-// Make sure your Schema in @/lib/schema has the 'payments' array defined!
 import { formSchema, type FormData } from "@/lib/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,9 +36,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Checkbox } from "@/components/ui/checkbox"; 
+import { Checkbox } from "@/components/ui/checkbox";
+import { Separator } from "@/components/ui/separator";
 
 const allPossibleSteps = [
   { id: 'settings', title: "Initial Settings", description: "Language, source & client type" },
@@ -53,59 +53,29 @@ export default function OnboardingForm() {
   const { toast } = useToast();
   const [mounted, setMounted] = useState(false);
   
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  useEffect(() => { setMounted(true); }, []);
 
   const form = useForm<FormData>({
-    resolver: zodResolver(formSchema) as any ,
+    resolver: zodResolver(formSchema) as any,
     mode: "onChange",
     defaultValues: {
-      language: "English" as const,
-      source: "Website" as const,
+      language: "English",
+      source: "Website",
       contractDate: new Date().toISOString().split("T")[0],
       clientType: "private",
       firstName: "",
       lastName: "",
       email: "",
       phone: "",
-      
-      // Address Defaults
-      addrStreet: "",
-      addrHouse: "",
-      addrApt: "",
-      addrCity: "",
-      addrZip: "",
-      addrState: "",
-      addrCountry: "Switzerland",
-
-      companyName: "",
-      compStreet: "",
-      compHouse: "",
-      compApt: "",
-      compCity: "",
-      compZip: "",
-      compState: "",
-      compCountry: "",
-      
+      addrStreet: "", addrHouse: "", addrApt: "", addrCity: "", addrZip: "", addrState: "", addrCountry: "Switzerland",
+      companyName: "", compStreet: "", compHouse: "", compApt: "", compCity: "", compZip: "", compState: "", compCountry: "",
       program: "Private tuition",
       courseLang: "German",
       level: [],
-      
-      lessons: [{
-        type: "Online Lessons",
-        format: "60",
-        totalHours: 0,
-        pricePerHour: 0,
-        schedule: ""
-      }],
-      
-      // 👇 NEW DYNAMIC PAYMENTS INIT
+      lessons: [{ type: "Online Lessons", format: "60", totalHours: 0, pricePerHour: 0, schedule: "" }],
       payments: [{ date: "", amount: 0 }],
-
       hoursPerLesson: "60",
       discount: 0,
-      scheduleText: "",
       courseStart: "",
       courseEnd: "",
       validUntil: "",
@@ -113,44 +83,26 @@ export default function OnboardingForm() {
   });
 
   const clientType = form.watch("clientType");
-
-  const steps = useMemo(() => {
-    return allPossibleSteps.filter(step => !step.businessOnly || clientType === 'business');
-  }, [clientType]);
+  const steps = useMemo(() => allPossibleSteps.filter(s => !s.businessOnly || clientType === 'business'), [clientType]);
 
   useEffect(() => {
-    // When the available steps change (e.g., switching client type),
-    // check if the current step is still valid. If not, reset to the first step.
-    if (currentStepIndex >= steps.length) {
-      setCurrentStepIndex(0);
-    }
+    if (currentStepIndex >= steps.length) setCurrentStepIndex(0);
   }, [steps, currentStepIndex]);
 
-  // --- LIVE CALCULATION FOR PAYMENT BUILDER ---
   const watchedLessons = useWatch({ control: form.control, name: "lessons" });
   const watchedDiscount = useWatch({ control: form.control, name: "discount" }) || 0;
   
-  const grossTotal = watchedLessons?.reduce((sum, item) => {
-    return sum + ((Number(item.totalHours) || 0) * (Number(item.pricePerHour) || 0));
-  }, 0) || 0;
-  
+  const grossTotal = watchedLessons?.reduce((sum, item) => sum + ((Number(item.totalHours) || 0) * (Number(item.pricePerHour) || 0)), 0) || 0;
   const liveTotalValue = Math.round(grossTotal * (1 - (watchedDiscount / 100)));
-  // ---------------------------------------------
 
   const next = async () => {
     const fields = getFieldsForStep(currentStepIndex, steps, form.getValues());
     const valid = await form.trigger(fields);
     if (!valid) {
-      toast({
-        variant: "destructive",
-        title: "Missing information",
-        description: "Please complete required fields.",
-      });
+      toast({ variant: "destructive", title: "Missing information", description: "Please complete required fields." });
       return;
     }
-    if (currentStepIndex < steps.length - 1) {
-      setCurrentStepIndex((s) => s + 1);
-    }
+    if (currentStepIndex < steps.length - 1) setCurrentStepIndex((s) => s + 1);
   };
 
   const prev = () => setCurrentStepIndex((s) => Math.max(0, s - 1));
@@ -158,683 +110,408 @@ export default function OnboardingForm() {
   const onSubmit = async (data: FormData) => {
     try {
       const webhookUrl = process.env.NEXT_PUBLIC_N8N_WEBHOOK_URL;
-      if (!webhookUrl) {
-        toast({ title: "Error", description: "Missing Webhook URL configuration." });
-        return;
-      }
+      if (!webhookUrl) return toast({ title: "Error", description: "Missing Webhook URL." });
 
-      // --- 2. CALCULATIONS ---
-
-      // A. Total Hours
-      const calculatedTotalHours = data.lessons.reduce((sum, item) => sum + (item.totalHours || 0), 0);
-
-      // B. Schedule Text
-      const combinedSchedule = data.lessons
-        .map(l => `${l.type} (${l.totalHours}h): ${l.schedule}`)
-        .join("\n");
-
-      // C. Types and Formats
-      const combinedTypes = data.lessons.map(l => l.type).join(" + ");
-      const combinedFormats = data.lessons.map(l => l.format).join(" / ");
-
-      // D. Generate Excel Payment String
-      // Format: "2026-01-01 100; 2026-02-01 200;"
-      const paymentString = data.payments
-        .map((p: any) => `${p.date}: ${p.amount} CHF`)
-        .join(";  ");
-
-      // --- 3. PREPARE PAYLOAD ---
       const payload = {
         body: {
           ...data,
-          
-          // New Calculated Fields
-          calculatedTotalValue: liveTotalValue, 
-          paymentPlanString: paymentString, // <--- For Excel
-
-          // Mapped Fields
-          totalHours: calculatedTotalHours,
-          scheduleText: combinedSchedule,
-          lessonType: combinedTypes,
-          hoursPerLesson: combinedFormats,
-
-          // Backward Compatibility (Map array to old fields for PDF)
-          pay1Date: data.payments[0]?.date || "",
-          pay1Amount: data.payments[0]?.amount || 0,
-          pay2Date: data.payments[1]?.date || "",
-          pay2Amount: data.payments[1]?.amount || "",
-          pay3Date: data.payments[2]?.date || "",
-          pay3Amount: data.payments[2]?.amount || "",
-
-          pricePerHour: data.lessons[0].pricePerHour,
+          calculatedTotalValue: liveTotalValue,
+          paymentPlanString: data.payments.map((p: any) => `${p.date}: ${p.amount} CHF`).join("; "),
+          totalHours: data.lessons.reduce((sum, item) => sum + (item.totalHours || 0), 0),
+          scheduleText: data.lessons.map(l => `${l.type} (${l.totalHours}h): ${l.schedule}`).join("\n"),
           level: Array.isArray(data.level) ? data.level.join(", ") : data.level,
-          
-          address: `${data.addrStreet} ${data.addrHouse}${data.addrApt ? ', Apt ' + data.addrApt : ''}\n${data.addrZip} ${data.addrCity}\n${data.addrState}, ${data.addrCountry}`,
-          
-          companyAddress: data.clientType === 'business' 
-            ? `${data.compStreet} ${data.compHouse}${data.compApt ? ', Apt ' + data.compApt : ''}\n${data.compZip} ${data.compCity}\n${data.compState}, ${data.compCountry}`
-            : "",
-          
-          contractDate: data.contractDate.toString(),
         }
       };
 
-      const res = await fetch(webhookUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
+      const res = await fetch(webhookUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (!res.ok) throw new Error();
-
-      toast({
-        title: "Success! 🚀",
-        description: `Contract generated. Total Value: ${liveTotalValue} CHF`,
-      });
-      
+      toast({ title: "Success! 🚀", description: `Contract generated. Total: ${liveTotalValue} CHF` });
     } catch (error) {
-      console.error(error);
-      toast({
-        variant: "destructive",
-        title: "Submission failed",
-        description: "Could not reach n8n.",
-      });
+      toast({ variant: "destructive", title: "Submission failed", description: "Could not reach n8n." });
     }
   };
 
-  if (!mounted) return null; 
-
+  if (!mounted) return null;
   const currentStepId = steps[currentStepIndex]?.id;
 
   return (
-    <Card className="w-full max-w-xl mx-auto rounded-2xl shadow-sm border border-slate-200 bg-white my-8">
-      <CardHeader className="pb-6 space-y-4">
+    <Card className="w-full max-w-xl mx-auto rounded-2xl shadow-lg border border-slate-200 bg-white my-8 overflow-hidden">
+      <CardHeader className="pb-6 space-y-4 bg-slate-50/50">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-slate-500">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
             Step {currentStepIndex + 1} of {steps.length}
           </span>
+          <span className="text-xs font-medium text-primary bg-primary/10 px-2 py-1 rounded-full">{Math.round(((currentStepIndex + 1) / steps.length) * 100)}% Complete</span>
         </div>
-
         <div className="flex items-center gap-2">
           {steps.map((_, index) => (
-            <div
-              key={index}
-              className={`h-1 rounded-full flex-1 transition-colors ${
-                currentStepIndex >= index ? 'bg-primary' : 'bg-slate-200'
-              }`}
-            />
+            <div key={index} className={cn("h-1.5 rounded-full flex-1 transition-all duration-500", currentStepIndex >= index ? 'bg-primary' : 'bg-slate-200')} />
           ))}
         </div>
-
-        <div className="pt-2">
-          <CardTitle className="text-xl font-semibold">{steps[currentStepIndex].title}</CardTitle>
-          <CardDescription className="text-sm text-slate-500">{steps[currentStepIndex].description}</CardDescription>
+        <div>
+          <CardTitle className="text-2xl font-bold text-slate-900">{steps[currentStepIndex].title}</CardTitle>
+          <CardDescription className="text-slate-500 mt-1">{steps[currentStepIndex].description}</CardDescription>
         </div>
       </CardHeader>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit, (errors) => console.log("❌ FORM ERRORS:", errors))}>
-          <CardContent className="min-h-[400px]">
+        <form onSubmit={form.handleSubmit(onSubmit)}>
+          <CardContent className="p-6 min-h-[450px]">
             <AnimatePresence mode="wait">
               <motion.div
                 key={currentStepIndex}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.3 }}
-                className="space-y-5 pb-4"
+                initial={{ opacity: 0, x: 10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -10 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-6"
               >
-                {/* STEP 1 */}
                 {currentStepId === 'settings' && (
                   <div className="space-y-5">
-                    <SelectField form={form} name="language" label="Language" items={["English", "German"]} />
-                    <SelectField form={form} name="source" label="Source" items={["Website", "Recommendation"]} />
+                    <div className="grid grid-cols-2 gap-4">
+                      <SelectField form={form} name="language" label="Language" items={["English", "German"]} />
+                      <SelectField form={form} name="source" label="Source" items={["Website", "Recommendation"]} />
+                    </div>
                     <DateField form={form} name="contractDate" label="Contract Date" />
                     <FormField
                       control={form.control}
                       name="clientType"
                       render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-sm font-medium text-slate-700">Client Type</FormLabel>
-                          <RadioGroup
-                            onValueChange={field.onChange}
-                            value={field.value}
-                            className="grid grid-cols-2 gap-3"
-                          >
+                        <FormItem className="space-y-3">
+                          <FormLabel className="text-sm font-semibold text-slate-700">Who is this contract for?</FormLabel>
+                          <RadioGroup onValueChange={field.onChange} value={field.value} className="grid grid-cols-2 gap-3">
                             {["private", "business"].map((v) => (
-                              <label
-                                key={v}
-                                className={`flex items-center justify-center rounded-lg border p-3 text-sm cursor-pointer transition-all
-                                ${field.value === v
-                                  ? "border-primary bg-primary/5 ring-1 ring-primary"
-                                  : "border-slate-200 bg-white hover:bg-slate-50"
-                                }`}
-                              >
-                                <RadioGroupItem value={v} className="hidden" />
-                                {v === "private" ? "Private Client" : "Business Client"}
+                              <label key={v} className={cn(
+                                "flex flex-col items-center justify-center rounded-xl border-2 p-4 cursor-pointer transition-all hover:bg-slate-50",
+                                field.value === v ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-slate-100 bg-white"
+                              )}>
+                                <RadioGroupItem value={v} className="sr-only" />
+                                <span className="font-bold capitalize">{v} Client</span>
+                                <span className="text-[10px] text-slate-500 mt-1">{v === 'private' ? 'Individual person' : 'Company or Org'}</span>
                               </label>
                             ))}
                           </RadioGroup>
-                          <FormMessage />
                         </FormItem>
                       )}
                     />
                   </div>
                 )}
 
-                {/* STEP 2 */}
                 {currentStepId === 'client' && (
                   <div className="space-y-5">
-                    <TextField form={form} name="firstName" label="First Name" />
-                    <TextField form={form} name="lastName" label="Last Name" />
-                    <TextField form={form} name="email" label="Email" type="email" />
-                    <PhoneField form={form} name="phone" label="Phone" />
-                    <AddressGroup form={form} prefix="addr" label="Private Address" />
+                    <div className="grid grid-cols-2 gap-4">
+                      <TextField form={form} name="firstName" label="First Name" />
+                      <TextField form={form} name="lastName" label="Last Name" />
+                    </div>
+                    <TextField form={form} name="email" label="Email Address" type="email" />
+                    <PhoneField form={form} name="phone" label="Phone Number" />
+                    <Separator className="my-2" />
+                    <AddressGroup form={form} prefix="addr" label="Residential Address" />
                   </div>
                 )}
 
-                {/* STEP 2.5 (BUSINESS) */}
                 {currentStepId === 'company' && (
                   <div className="space-y-5">
-                    <TextField form={form} name="companyName" label="Company Name" />
-                    <AddressGroup form={form} prefix="comp" label="Company Address" />
+                    <TextField form={form} name="companyName" label="Legal Company Name" />
+                    <Separator className="my-2" />
+                    <AddressGroup form={form} prefix="comp" label="Registered Office Address" />
                   </div>
                 )}
 
-                {/* STEP 3 */}
                 {currentStepId === 'course' && (
-                  <div className="space-y-5">
-                    <SelectField form={form} name="courseLang" label="Course Language" items={["German", "Spanish"]} />
-                    
-                    <MultiSelectField 
-                      form={form} 
-                      name="level" 
-                      label="Level" 
-                      items={["A1", "A2", "B1", "B2", "C1", "C2"]} 
-                    />
-
+                  <div className="space-y-6">
+                    <SelectField form={form} name="courseLang" label="Language to Learn" items={["German", "Spanish", "English", "French"]} />
+                    <MultiSelectField form={form} name="level" label="Target Proficiency Levels" items={["A1", "A2", "B1", "B2", "C1", "C2"]} />
+                    <Separator />
                     <LessonList form={form} />
-
-                    <div className="pt-4 border-t">
-                      <NumberField form={form} name="discount" label="Global Discount %" />
+                    <div className="pt-4 border-t space-y-4">
+                      <NumberField form={form} name="discount" label="Applied Discount %" min={0} max={100} />
                       <LiveTotalSummary form={form} />
                     </div>
                   </div>
                 )}
 
-                {/* STEP 4 */}
                 {currentStepId === 'billing' && (
-                  <div className="space-y-5">
-                    <DateField form={form} name="courseStart" label="Course Start" />
-                    <DateField form={form} name="courseEnd" label="Course End" />
-                    <DateField form={form} name="validUntil" label="Valid Until" />
-
-                    {/* 👇 NEW DYNAMIC PAYMENT PLANNER 👇 */}
-                    <div className="space-y-4 pt-4 border-t">
-                       <PaymentBuilder form={form} calculatedTotal={liveTotalValue} />
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-2 gap-4">
+                      <DateField form={form} name="courseStart" label="Start Date" />
+                      <DateField form={form} name="courseEnd" label="End Date" />
                     </div>
+                    <DateField form={form} name="validUntil" label="Offer Valid Until" />
+                    <Separator />
+                    <PaymentBuilder form={form} calculatedTotal={liveTotalValue} />
                   </div>
                 )}
               </motion.div>
             </AnimatePresence>
           </CardContent>
-          <CardFooter className="bg-white p-6 border-t flex gap-3">
-              <Button type="button" variant="outline" className="flex-1 h-11" onClick={prev} disabled={currentStepIndex === 0}>
-                Back
-              </Button>
-              {currentStepIndex === steps.length - 1 ? (
-                <Button type="submit" className="flex-1 h-11">Submit</Button>
-              ) : (
-                <Button type="button" className="flex-1 h-11" onClick={next}>Continue</Button>
-              )}
+          <CardFooter className="bg-slate-50 p-6 border-t flex gap-3">
+            <Button type="button" variant="ghost" className="flex-1 h-12 font-semibold" onClick={prev} disabled={currentStepIndex === 0}>Back</Button>
+            <Button type="button" className="flex-[2] h-12 font-bold shadow-md transition-all active:scale-95" onClick={currentStepIndex === steps.length - 1 ? form.handleSubmit(onSubmit) : next}>
+              {currentStepIndex === steps.length - 1 ? "Complete & Send Contract" : "Continue to Next Step"}
+            </Button>
           </CardFooter>
-          </form>
-        </Form>
+        </form>
+      </Form>
     </Card>
   );
 }
 
-/* ------------------ Helpers ------------------ */
+/* ------------------ REFACTORED HELPERS ------------------ */
 
-interface FieldCommonProps {
-  form: UseFormReturn<FormData>;
-  name: FieldPath<FormData>;
-  label: string;
-}
-
-function TextField({ form, name, label, type = "text" }: FieldCommonProps & { type?: string }) {
+function TextField({ form, name, label, type = "text" }: any) {
   return (
-    <FormField
-      control={form.control}
-      name={name}
-      render={({ field }) => (
-        <FormItem>
-          <FormLabel className="text-sm font-medium text-slate-700">{label}</FormLabel>
-          <FormControl>
-            <Input 
-              {...field} 
-              type={type} 
-              value={(field.value as string) || ""} 
-              className="h-11 rounded-lg bg-slate-50 border-slate-200 focus:border-primary focus:ring-0" 
-            />
-          </FormControl>
-          <FormMessage />
-        </FormItem>
-      )}
-    />
+    <FormField control={form.control} name={name} render={({ field }) => (
+      <FormItem className="space-y-1.5">
+        <FormLabel className="text-xs font-bold text-slate-600 uppercase tracking-tight">{label}</FormLabel>
+        <FormControl>
+          <Input {...field} type={type} className="h-11 rounded-xl bg-white border-slate-200 shadow-sm focus:ring-2 focus:ring-primary/20" />
+        </FormControl>
+        <FormMessage className="text-[11px] font-medium" />
+      </FormItem>
+    )} />
   );
 }
 
-function SelectField({ form, name, label, items }: FieldCommonProps & { items: string[] }) {
+function PhoneField({ form, name, label }: any) {
   return (
-    <FormField
-      control={form.control}
-      name={name}
-      render={({ field }) => (
-        <FormItem>
-          <FormLabel className="text-sm font-medium text-slate-700">{label}</FormLabel>
-          <Select onValueChange={field.onChange} value={(field.value as string) || undefined}>
-            <FormControl>
-              <SelectTrigger className="h-11 rounded-lg bg-slate-50 border-slate-200">
-                <SelectValue placeholder={`Select ${label.toLowerCase()}`} />
-              </SelectTrigger>
-            </FormControl>
-            <SelectContent>
-              {items.map((i) => (
-                <SelectItem key={i} value={i}>{i}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <FormMessage />
-        </FormItem>
-      )}
-    />
-  );
-}
-
-function NumberField({ form, name, label }: FieldCommonProps) {
-  return (
-    <FormField
-      control={form.control}
-      name={name}
-      render={({ field }) => (
-        <FormItem>
-          <FormLabel className="text-sm font-medium text-slate-700">{label}</FormLabel>
-          <FormControl>
-            <Input
-              type="number"
-              className="h-11 rounded-lg bg-slate-50 border-slate-200 focus:border-primary focus:ring-0"
-              value={(field.value as any) ?? ""}
-              onChange={(e) =>
-                field.onChange(e.target.value === "" ? undefined : Number(e.target.value))
-              }
-            />
-          </FormControl>
-          <FormMessage />
-        </FormItem>
-      )}
-    />
-  );
-}
-
-function DateField({ form, name, label }: FieldCommonProps) {
-  return (
-    <FormField
-      control={form.control}
-      name={name}
-      render={({ field }) => (
-        <FormItem>
-          <FormLabel className="text-sm font-medium text-slate-700">{label}</FormLabel>
-          <FormControl>
-            <Input 
-              type="date" 
-              {...field} 
-              value={(field.value as string) || ''} 
-              className="h-11 rounded-lg bg-slate-50 border-slate-200 focus:border-primary focus:ring-0" 
-            />
-          </FormControl>
-          <FormMessage />
-        </FormItem>
-      )}
-    />
-  );
-}
-
-function getFieldsForStep(stepIndex: number, steps: any[], values: FormData): FieldPath<FormData>[] {
-  const stepId = steps[stepIndex]?.id;
-  switch (stepId) {
-    case 'settings':
-      return ["language", "source", "contractDate", "clientType"];
-    case 'client':
-      return [
-        "firstName", "lastName", "email", "phone", 
-        "addrStreet", "addrHouse", "addrCity", "addrZip", "addrState", "addrCountry"
-      ];
-    case 'company':
-      // This will only be triggered if it's a business client due to dynamic steps
-      return ["companyName", "compStreet", "compHouse", "compCity", "compZip", "compState", "compCountry"];
-    case 'course':
-      return ["courseLang", "level", "program", "discount", "lessons"];
-    case 'billing':
-      // 👇 Validate the NEW payments array
-      return ["courseStart", "courseEnd", "validUntil", "payments"];
-    default:
-      return [];
-  }
-}
-
-function MultiSelectField({ form, name, label, items }: FieldCommonProps & { items: string[] }) {
-  return (
-    <FormField
-      control={form.control}
-      name={name}
-      render={() => (
-        <FormItem>
-          <div className="mb-4">
-            <FormLabel className="text-sm font-medium text-slate-700">{label}</FormLabel>
+    <FormField control={form.control} name={name} render={({ field, fieldState }) => (
+      <FormItem className="space-y-1.5">
+        <FormLabel className="text-xs font-bold text-slate-600 uppercase tracking-tight">{label}</FormLabel>
+        <FormControl>
+          <div className={cn(
+            "flex h-11 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm transition-all focus-within:ring-2 focus-within:ring-primary/20",
+            fieldState.error && "border-destructive ring-destructive/20 focus-within:ring-destructive/20"
+          )}>
+            <PhoneInput placeholder="Enter phone" value={field.value} onChange={field.onChange} defaultCountry="CH" international className="flex-1 outline-none" />
           </div>
-          <div className="grid grid-cols-3 gap-4"> 
-            {items.map((item) => (
-              <FormField
-                key={item}
-                control={form.control}
-                name={name}
-                render={({ field }) => (
-                  <FormItem>
-                    <label className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm cursor-pointer hover:bg-slate-50 transition-colors">
-                      <FormControl>
-                        <Checkbox
-                          checked={(field.value as string[])?.includes(item)}
-                          onCheckedChange={(checked) => {
-                            const current = (field.value as string[]) || [];
-                            return checked ? field.onChange([...current, item]) : field.onChange(current.filter((value) => value !== item));
-                          }}
-                        />
-                      </FormControl>
-                      <span className="font-normal text-sm">{item}</span>
-                    </label>
-                  </FormItem>
-                )}
-              />
-            ))}
-          </div>
-          <FormMessage />
-        </FormItem>
-      )}
-    />
+        </FormControl>
+        {fieldState.error && <p className="text-[11px] font-medium text-destructive">Invalid phone number</p>}
+      </FormItem>
+    )} />
   );
 }
 
-function PhoneField({ form, name, label }: FieldCommonProps) {
+function AddressGroup({ form, prefix, label }: any) {
+  const options = useMemo(() => countryList().getData(), []);
   return (
-    <FormField
-      control={form.control}
-      name={name}
-      render={({ field, fieldState }) => (
-        <FormItem>
-          <FormLabel className="text-sm font-medium text-slate-700">{label}</FormLabel>
-          <FormControl>
-            <div className={cn(
-                "flex h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2",
-                fieldState.error && "border-destructive"
-              )}>
-              <PhoneInput
-                placeholder="Enter phone number"
-                value={field.value as string}
-                onChange={field.onChange}
-                defaultCountry="CH"
-                international
-                className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
-              />
-            </div>
-          </FormControl>
-          <FormMessage />
-        </FormItem>
-      )}
-    />
-  );
-}
-
-function AddressGroup({ form, prefix, label }: { form: UseFormReturn<FormData>, prefix: string, label: string }) {
-  const countryOptions = useMemo(() => countryList().getLabels(), []);
-
-  return (
-    <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
-      <p className="text-sm font-semibold text-slate-900">{label}</p>
+    <div className="space-y-4 pt-2">
+      <p className="text-sm font-bold text-slate-800">{label}</p>
       <div className="grid grid-cols-6 gap-3">
-        <div className="col-span-4"><TextField form={form} name={`${prefix}Street` as any} label="Street" /></div>
-        <div className="col-span-2"><TextField form={form} name={`${prefix}House` as any} label="No." /></div>
-        <div className="col-span-2"><TextField form={form} name={`${prefix}Apt` as any} label="Apt (Opt)" /></div>
-        <div className="col-span-4"><TextField form={form} name={`${prefix}City` as any} label="City" /></div>
-        <div className="col-span-2"><TextField form={form} name={`${prefix}Zip` as any} label="Zip" /></div>
-        <div className="col-span-2"><TextField form={form} name={`${prefix}State` as any} label="State" /></div>
-        <div className="col-span-4"><SelectField form={form} name={`${prefix}Country` as any} label="Country" items={countryOptions} /></div>
+        <div className="col-span-4"><TextField form={form} name={`${prefix}Street`} label="Street" /></div>
+        <div className="col-span-2"><TextField form={form} name={`${prefix}House`} label="No." /></div>
+        <div className="col-span-3"><TextField form={form} name={`${prefix}City`} label="City" /></div>
+        <div className="col-span-3"><TextField form={form} name={`${prefix}Zip`} label="Zip" /></div>
+        <div className="col-span-6">
+          <FormField control={form.control} name={`${prefix}Country`} render={({ field }) => (
+            <FormItem className="space-y-1.5">
+              <FormLabel className="text-xs font-bold text-slate-600 uppercase">Country</FormLabel>
+              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <FormControl><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue placeholder="Select country" /></SelectTrigger></FormControl>
+                <SelectContent>{options.map(c => <SelectItem key={c.value} value={c.label}>{c.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </FormItem>
+          )} />
+        </div>
       </div>
     </div>
+  );
+}
+
+function MultiSelectField({ form, name, label, items }: any) {
+  return (
+    <FormField control={form.control} name={name} render={() => (
+      <FormItem className="space-y-3">
+        <FormLabel className="text-xs font-bold text-slate-600 uppercase">{label}</FormLabel>
+        <div className="grid grid-cols-3 gap-3"> 
+          {items.map((item: string) => (
+            <FormField key={item} control={form.control} name={name} render={({ field }) => (
+              <label className={cn(
+                "flex items-center space-x-3 rounded-xl border p-3 cursor-pointer transition-all hover:bg-slate-50",
+                (field.value as string[])?.includes(item) ? "border-primary bg-primary/5 shadow-sm" : "border-slate-100"
+              )}>
+                <FormControl>
+                  <Checkbox checked={(field.value as string[])?.includes(item)} onCheckedChange={(checked) => {
+                    const current = (field.value as string[]) || [];
+                    return checked ? field.onChange([...current, item]) : field.onChange(current.filter(v => v !== item));
+                  }} />
+                </FormControl>
+                <span className="text-sm font-medium">{item}</span>
+              </label>
+            )} />
+          ))}
+        </div>
+        <FormMessage />
+      </FormItem>
+    )} />
+  );
+}
+
+function SelectField({ form, name, label, items }: any) {
+  return (
+    <FormField control={form.control} name={name} render={({ field }) => (
+      <FormItem className="space-y-1.5 flex-1">
+        <FormLabel className="text-xs font-bold text-slate-600 uppercase">{label}</FormLabel>
+        <Select onValueChange={field.onChange} value={field.value}>
+          <FormControl><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue placeholder="Select" /></SelectTrigger></FormControl>
+          <SelectContent>{items.map((i: string) => <SelectItem key={i} value={i}>{i}</SelectItem>)}</SelectContent>
+        </Select>
+      </FormItem>
+    )} />
+  );
+}
+
+function DateField({ form, name, label }: any) {
+  return (
+    <FormField control={form.control} name={name} render={({ field }) => (
+      <FormItem className="space-y-1.5 flex-1">
+        <FormLabel className="text-xs font-bold text-slate-600 uppercase">{label}</FormLabel>
+        <FormControl><Input type="date" {...field} className="h-11 rounded-xl bg-white" /></FormControl>
+      </FormItem>
+    )} />
+  );
+}
+
+function NumberField({ form, name, label, min, max }: any) {
+  return (
+    <FormField control={form.control} name={name} render={({ field }) => (
+      <FormItem className="space-y-1.5">
+        <FormLabel className="text-xs font-bold text-slate-600 uppercase">{label}</FormLabel>
+        <FormControl>
+          <Input type="number" min={min} max={max} className="h-11 rounded-xl bg-white" {...field} onChange={(e) => {
+            let val = e.target.value === "" ? 0 : Number(e.target.value);
+            if (max !== undefined) val = Math.min(val, max);
+            if (min !== undefined) val = Math.max(val, min);
+            field.onChange(val);
+          }} />
+        </FormControl>
+      </FormItem>
+    )} />
   );
 }
 
 /* ------------------ LESSONS COMPONENT ------------------ */
 
-const timeToMinutes = (time: string) => {
-  const [h, m] = time.split(":").map(Number);
-  return h * 60 + m;
-};
+function LessonList({ form }: { form: UseFormReturn<FormData> }) {
+  const { fields, append, remove } = useFieldArray({ control: form.control, name: "lessons" });
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">Lesson Packages</h3>
+        <Button type="button" variant="outline" size="sm" onClick={() => append({ type: "Online Lessons", format: "60", totalHours: 0, pricePerHour: 0, schedule: "" })} className="rounded-full h-8">+ Add Type</Button>
+      </div>
+      {fields.map((field, index) => (
+        <div key={field.id} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-4 relative">
+          {fields.length > 1 && <button type="button" onClick={() => remove(index)} className="absolute -top-2 -right-2 bg-white border shadow-sm rounded-full w-6 h-6 flex items-center justify-center text-destructive hover:bg-destructive hover:text-white transition-colors">×</button>}
+          <div className="grid grid-cols-2 gap-4">
+            <SelectField form={form} name={`lessons.${index}.type`} label="Type" items={["Online Lessons", "Live Lessons"]} />
+            <SelectField form={form} name={`lessons.${index}.format`} label="Format (Min)" items={["45", "60", "90", "120"]} />
+            <NumberField form={form} name={`lessons.${index}.totalHours`} label="Total Hours" />
+            <NumberField form={form} name={`lessons.${index}.pricePerHour`} label="Price (CHF/h)" />
+          </div>
+          <ScheduleBuilder form={form} index={index} />
+        </div>
+      ))}
+    </div>
+  );
+}
 
-function ScheduleBuilder({ form, index }: { form: UseFormReturn<FormData>; index: number }) {
+function ScheduleBuilder({ form, index }: any) {
   const [day, setDay] = useState("Monday");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
-  const [error, setError] = useState<{ msg: string | null; fields: Array<'start' | 'end'> }>({ msg: null, fields: [] });
+  const [error, setError] = useState<string | null>(null);
 
-  const currentScheduleStr = form.watch(`lessons.${index}.schedule`) || "";
-  
-  const slots = currentScheduleStr ? currentScheduleStr.split(", ").filter(Boolean).map(s => {
-    const [d, times] = s.split(" ");
-    const [start, end] = times.split("-");
-    return { day: d, start, end };
+  const currentSchedule = form.watch(`lessons.${index}.schedule`) || "";
+  const slots = currentSchedule ? currentSchedule.split(", ").map((s: any) => {
+    const [d, t] = s.split(" ");
+    return { day: d, time: t };
   }) : [];
 
   const addSlot = () => {
-    setError({ msg: null, fields: [] });
-    if (!startTime && !endTime) return setError({ msg: "Enter start and end times.", fields: ['start', 'end'] });
-    if (!startTime) return setError({ msg: "Enter a start time.", fields: ['start'] });
-    if (!endTime) return setError({ msg: "Enter an end time.", fields: ['end'] });
-
-    if (timeToMinutes(endTime) <= timeToMinutes(startTime)) {
-      return setError({ msg: "End time must be after start.", fields: ['start', 'end'] });
-    }
-
-    const newStart = timeToMinutes(startTime);
-    const newEnd = timeToMinutes(endTime);
-
-    const hasOverlap = slots.some(slot => {
-      if (slot.day !== day) return false;
-      const existStart = timeToMinutes(slot.start);
-      const existEnd = timeToMinutes(slot.end);
-      return newStart < existEnd && newEnd > existStart;
-    });
-
-    if (hasOverlap) {
-      return setError({ msg: "Time overlaps with an existing slot.", fields: ['start', 'end'] });
-    }
-
-    const newSlotStr = `${day} ${startTime}-${endTime}`;
-    const newSchedule = currentScheduleStr ? `${currentScheduleStr}, ${newSlotStr}` : newSlotStr;
+    setError(null);
+    if (!startTime || !endTime) return setError("Missing times");
+    if (startTime >= endTime) return setError("Invalid duration");
     
-    form.setValue(`lessons.${index}.schedule`, newSchedule, { shouldValidate: true });
-    setStartTime("");
-    setEndTime("");
+    const newSlot = `${day} ${startTime}-${endTime}`;
+    form.setValue(`lessons.${index}.schedule`, currentSchedule ? `${currentSchedule}, ${newSlot}` : newSlot);
+    setStartTime(""); setEndTime("");
   };
-
-  const removeSlot = (slotIndex: number) => {
-    const newSlots = slots.filter((_, i) => i !== slotIndex);
-    const newString = newSlots.map(s => `${s.day} ${s.start}-${s.end}`).join(", ");
-    form.setValue(`lessons.${index}.schedule`, newString);
-  };
-
-  const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
   return (
-    <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
-      <FormLabel className="text-sm font-medium text-slate-700">Schedule Slots</FormLabel>
-      <div className="flex flex-wrap gap-2 mb-2">
-        {slots.map((slot, i) => (
-          <div key={i} className="flex items-center gap-1 rounded-md bg-blue-50 px-2 py-1 text-xs text-blue-700 border border-blue-100">
-            <span>{slot.day.slice(0,3)} {slot.start}-{slot.end}</span>
-            <button type="button" onClick={() => removeSlot(i)} className="ml-1 text-blue-400 hover:text-red-500 font-bold">×</button>
+    <div className="space-y-3 bg-white p-3 rounded-xl border border-slate-100">
+      <div className="flex flex-wrap gap-2">
+        {slots.map((s: any, i: number) => (
+          <div key={i} className="text-[10px] bg-primary/10 text-primary px-2 py-1 rounded font-bold border border-primary/20 flex items-center gap-2">
+            {s.day.slice(0,3)} {s.time}
+            <button onClick={() => {
+              const updated = slots.filter((_: any, idx: number) => idx !== i).map((sl: any) => `${sl.day} ${sl.time}`).join(", ");
+              form.setValue(`lessons.${index}.schedule`, updated);
+            }} className="text-primary hover:text-destructive">×</button>
           </div>
         ))}
-        {slots.length === 0 && <span className="text-xs text-slate-400 italic">No slots added yet.</span>}
       </div>
       <div className="flex gap-2 items-end">
-        <div className="flex-1">
-           <label className="text-[10px] text-slate-500 uppercase font-bold">Day</label>
-           <select className="h-9 w-full rounded-md border border-slate-200 bg-transparent px-3 py-1 text-sm shadow-sm" value={day} onChange={e => setDay(e.target.value)}>
-             {days.map(d => <option key={d} value={d}>{d}</option>)}
-           </select>
-        </div>
-        <div className="w-24">
-           <label className="text-[10px] text-slate-500 uppercase font-bold">Start</label>
-           <Input type="time" className={cn("h-9", error.fields.includes('start') && "border-destructive focus-visible:ring-destructive")} value={startTime} onChange={e => setStartTime(e.target.value)} />
-        </div>
-        <div className="w-24">
-           <label className="text-[10px] text-slate-500 uppercase font-bold">End</label>
-           <Input type="time" className={cn("h-9", error.fields.includes('end') && "border-destructive focus-visible:ring-destructive")} value={endTime} onChange={e => setEndTime(e.target.value)} />
-        </div>
-        <Button type="button" size="sm" onClick={addSlot} className="h-9 px-3 bg-slate-900 text-white hover:bg-slate-800">+</Button>
+        <select value={day} onChange={e => setDay(e.target.value)} className="h-9 rounded-lg border bg-slate-50 px-2 text-xs flex-1">
+          {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(d => <option key={d}>{d}</option>)}
+        </select>
+        <Input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className={cn("h-9 w-24 text-xs", error && "border-destructive")} />
+        <Input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className={cn("h-9 w-24 text-xs", error && "border-destructive")} />
+        <Button type="button" size="sm" onClick={addSlot} className="h-9 px-3">+</Button>
       </div>
-      {error.msg && <p className="text-xs text-red-500 font-medium mt-1">{error.msg}</p>}
+      {error && <p className="text-[10px] text-destructive font-bold">{error}</p>}
     </div>
   );
 }
 
-function LessonList({ form }: { form: UseFormReturn<FormData> }) {
-  const { fields, append, remove } = useFieldArray({
-    control: form.control,
-    name: "lessons",
-  });
+function LiveTotalSummary({ form }: any) {
+  const lessons = useWatch({ control: form.control, name: "lessons" });
+  const discount = useWatch({ control: form.control, name: "discount" }) || 0;
+  const grossTotal = lessons?.reduce((sum: number, item: any) => sum + ((Number(item.totalHours)||0) * (Number(item.pricePerHour)||0)), 0) || 0;
+  const netTotal = grossTotal - (grossTotal * discount / 100);
+
+  if (!grossTotal) return null;
+  return (
+    <div className="bg-primary/5 border border-primary/10 rounded-2xl p-4 space-y-2">
+      <div className="flex justify-between text-xs font-medium text-slate-500"><span>Gross Subtotal</span><span>{grossTotal.toFixed(2)} CHF</span></div>
+      {discount > 0 && <div className="flex justify-between text-xs font-bold text-green-600"><span>Discount ({discount}%)</span><span>-{ (grossTotal * discount / 100).toFixed(2) } CHF</span></div>}
+      <div className="flex justify-between text-xl font-black text-primary pt-2 border-t border-primary/10"><span>Final Total</span><span>{netTotal.toFixed(2)} CHF</span></div>
+    </div>
+  );
+}
+
+function PaymentBuilder({ form, calculatedTotal }: any) {
+  const { fields, append, remove } = useFieldArray({ control: form.control, name: "payments" });
+  const watched = useWatch({ control: form.control, name: "payments" }) || [];
+  const currentSum = watched.reduce((sum: number, item: any) => sum + (Number(item?.amount) || 0), 0);
+  const diff = calculatedTotal - currentSum;
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <h4 className="text-sm font-bold text-slate-800 uppercase">Payment Plan</h4>
+        <div className={cn("text-xs font-bold px-2 py-1 rounded", Math.abs(diff) < 1 ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>
+          Remaining: {diff.toFixed(2)} CHF
+        </div>
+      </div>
       {fields.map((field, index) => (
-        <div key={field.id} className="relative rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <div className="mb-4 flex items-center justify-between">
-            <h4 className="text-sm font-semibold text-slate-900">Lesson Option {index + 1}</h4>
-            {fields.length > 1 && (
-              <Button type="button" variant="destructive" size="sm" onClick={() => remove(index)}>Remove</Button>
-            )}
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <SelectField form={form} name={`lessons.${index}.type` as any} label="Type" items={["Online Lessons", "Live Lessons"]} />
-            <SelectField form={form} name={`lessons.${index}.format` as any} label="Format (Min)" items={["45", "60", "90", "120"]} />
-            <NumberField form={form} name={`lessons.${index}.totalHours` as any} label="Total Hours" />
-            <NumberField form={form} name={`lessons.${index}.pricePerHour` as any} label="Price/Hr (CHF)" />
-            <div className="col-span-2"><ScheduleBuilder form={form} index={index} /></div>
-          </div>
+        <div key={field.id} className="flex gap-2 items-end bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+          <DateField form={form} name={`payments.${index}.date`} label={`Installment #${index+1}`} />
+          <div className="w-32"><NumberField form={form} name={`payments.${index}.amount`} label="Amount" /></div>
+          {fields.length > 1 && <Button type="button" variant="ghost" size="icon" className="h-11 text-destructive" onClick={() => remove(index)}>✕</Button>}
         </div>
       ))}
-      <Button type="button" variant="outline" onClick={() => append({ type: "Online Lessons", format: "60", totalHours: 0, pricePerHour: 0, schedule: "" })} className="w-full border-dashed">
-        + Add Another Lesson Type
-      </Button>
+      <Button type="button" variant="outline" onClick={() => append({ date: "", amount: 0 })} className="w-full border-dashed rounded-xl h-11">+ Add Next Installment</Button>
     </div>
   );
 }
 
-function LiveTotalSummary({ form }: { form: UseFormReturn<FormData> }) {
-  const lessons = useWatch({ control: form.control, name: "lessons" });
-  const discount = useWatch({ control: form.control, name: "discount" }) || 0;
-  const grossTotal = lessons?.reduce((sum, item) => sum + ((Number(item.totalHours)||0) * (Number(item.pricePerHour)||0)), 0) || 0;
-  const discountAmount = (grossTotal * discount) / 100;
-  const netTotal = grossTotal - discountAmount;
-
-  if (grossTotal === 0) return null;
-
-  return (
-    <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-4">
-      <div className="flex justify-between text-sm text-slate-600">
-        <span>Subtotal (Gross):</span>
-        <span>{grossTotal.toFixed(2)} CHF</span>
-      </div>
-      {discount > 0 && (
-        <div className="flex justify-between text-sm text-green-600">
-          <span>Discount ({discount}%):</span>
-          <span>- {discountAmount.toFixed(2)} CHF</span>
-        </div>
-      )}
-      <div className="mt-2 flex justify-between border-t border-blue-200 pt-2 text-lg font-bold text-blue-900">
-        <span>Total Value:</span>
-        <span>{netTotal.toFixed(2)} CHF</span>
-      </div>
-    </div>
-  );
-}
-
-/* ------------------ NEW PAYMENT BUILDER ------------------ */
-
-function PaymentBuilder({ form, calculatedTotal }: { form: UseFormReturn<FormData>; calculatedTotal: number }) {
-  const { fields, append, remove } = useFieldArray({
-    control: form.control,
-    name: "payments" as any, // "as any" handles schema disconnects during dev
-  });
-
-  const watchedPayments = useWatch({ control: form.control, name: "payments" }) || [];
-  const currentSum = watchedPayments.reduce((sum: number, item: any) => sum + (Number(item?.amount) || 0), 0);
-  const remaining = calculatedTotal - currentSum;
-
-  return (
-    <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-      <div className="flex justify-between items-center mb-2">
-        <h4 className="text-sm font-semibold text-slate-900">Payment Plan</h4>
-        <div className="text-xs font-mono text-slate-500 text-right">
-          <div>Total: {calculatedTotal} CHF</div>
-          <div className={Math.abs(remaining) > 0.01 ? "text-red-500 font-bold" : "text-green-600"}>
-            Remaining: {remaining.toFixed(2)} CHF
-          </div>
-        </div>
-      </div>
-
-      {fields.map((field, index) => (
-        <div key={field.id} className="flex gap-3 items-end">
-          <div className="w-10 pt-3 text-xs font-bold text-slate-400">#{index + 1}</div>
-          <FormField
-            control={form.control}
-            name={`payments.${index}.date`}
-            render={({ field }) => (
-              <FormItem className="flex-1">
-                <FormLabel className="text-[10px] uppercase text-slate-500 font-bold">Date</FormLabel>
-                <FormControl>
-                  <Input type="date" className="h-10 bg-white" {...field} value={field.value ?? ""} />
-                </FormControl>
-                <FormMessage className="text-xs" />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name={`payments.${index}.amount`}
-            render={({ field }) => (
-              <FormItem className="flex-1">
-                <FormLabel className="text-[10px] uppercase text-slate-500 font-bold">Amount (CHF)</FormLabel>
-                <FormControl>
-                  <Input type="number" className="h-10 bg-white" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : +e.target.value)} value={field.value ?? ''} />
-                </FormControl>
-                <FormMessage className="text-xs" />
-              </FormItem>
-            )}
-          />
-          {fields.length > 1 && (
-            <Button type="button" variant="destructive" size="icon" className="h-10 w-10 shrink-0" onClick={() => remove(index)}>✕</Button>
-          )}
-        </div>
-      ))}
-
-      <Button type="button" variant="outline" onClick={() => append({ date: "", amount: 0 })} className="w-full border-dashed border-slate-300 hover:bg-white text-slate-600">
-        + Add Installment
-      </Button>
-      {Math.abs(remaining) > 0.01 && (
-         <p className="text-xs text-center text-amber-600">Note: The sum of installments ({currentSum}) does not match the Total Value ({calculatedTotal}).</p>
-      )}
-    </div>
-  );
+function getFieldsForStep(index: number, steps: any[], values: any): FieldPath<FormData>[] {
+  const id = steps[index]?.id;
+  if (id === 'settings') return ["language", "source", "contractDate", "clientType"];
+  if (id === 'client') return ["firstName", "lastName", "email", "phone", "addrStreet", "addrHouse", "addrCity", "addrZip", "addrCountry"];
+  if (id === 'company') return ["companyName", "compStreet", "compHouse", "compCity", "compZip", "compCountry"];
+  if (id === 'course') return ["courseLang", "level", "lessons", "discount"];
+  if (id === 'billing') return ["courseStart", "courseEnd", "payments"];
+  return [];
 }
