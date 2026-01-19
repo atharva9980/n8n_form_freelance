@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isValidPhoneNumber } from "react-phone-number-input";
 
 export const formSchema = z.object({
   // Step 1: Settings
@@ -11,7 +12,7 @@ export const formSchema = z.object({
   firstName: z.string().min(1, "First name is required."),
   lastName: z.string().min(1, "Last name is required."),
   email: z.string().email("Invalid email address."),
-  phone: z.string().min(1, "Phone number is required."),
+  phone: z.string().min(1, "Phone number is required.").refine(isValidPhoneNumber, { message: "Invalid phone number." }),
   
   // Structured Client Address
   addrStreet: z.string().min(1, "Street is required."),
@@ -46,7 +47,7 @@ export const formSchema = z.object({
     schedule: z.string().min(1, "Schedule required"), 
   })).min(1, "Add at least one lesson type."),
 
-  discount: z.coerce.number().min(0, "Discount cannot be negative.").default(0),
+  discount: z.coerce.number().min(0, "Discount cannot be negative.").max(100, "Discount cannot be over 100%.").default(0),
 
   // Step 4: Billing & Dates
   courseStart: z.string().min(1, "Course start date is required."),

@@ -2,14 +2,16 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion, AnimatePresence } from "framer-motion";
-import PhoneInput from 'react-phone-number-input';
+import PhoneInput from "react-phone-number-input";
+import countryList from "react-select-country-list";
 
 // Make sure your Schema in @/lib/schema has the 'payments' array defined!
 import { formSchema, type FormData } from "@/lib/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { useForm, useFieldArray, useWatch, type FieldPath, type UseFormReturn } from "react-hook-form";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Card,
   CardContent,
@@ -38,15 +40,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Checkbox } from "@/components/ui/checkbox"; 
 
-const steps = [
-  { id: 1, title: "Initial Settings", description: "Language, source & client type" },
-  { id: 2, title: "Client Details", description: "Personal & company information" },
-  { id: 3, title: "Course Details", description: "Program & scheduling" },
-  { id: 4, title: "Billing & Dates", description: "Payments & validity" },
+const allPossibleSteps = [
+  { id: 'settings', title: "Initial Settings", description: "Language, source & client type" },
+  { id: 'client', title: "Client Details", description: "Personal information" },
+  { id: 'company', title: "Company Details", description: "Business name and address", businessOnly: true },
+  { id: 'course', title: "Course Details", description: "Program & scheduling" },
+  { id: 'billing', title: "Billing & Dates", description: "Payments & validity" },
 ];
 
 export default function OnboardingForm() {
-  const [currentStep, setCurrentStep] = useState(0);
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const { toast } = useToast();
   const [mounted, setMounted] = useState(false);
   
@@ -111,6 +114,18 @@ export default function OnboardingForm() {
 
   const clientType = form.watch("clientType");
 
+  const steps = useMemo(() => {
+    return allPossibleSteps.filter(step => !step.businessOnly || clientType === 'business');
+  }, [clientType]);
+
+  useEffect(() => {
+    // When the available steps change (e.g., switching client type),
+    // check if the current step is still valid. If not, reset to the first step.
+    if (currentStepIndex >= steps.length) {
+      setCurrentStepIndex(0);
+    }
+  }, [steps, currentStepIndex]);
+
   // --- LIVE CALCULATION FOR PAYMENT BUILDER ---
   const watchedLessons = useWatch({ control: form.control, name: "lessons" });
   const watchedDiscount = useWatch({ control: form.control, name: "discount" }) || 0;
@@ -123,7 +138,7 @@ export default function OnboardingForm() {
   // ---------------------------------------------
 
   const next = async () => {
-    const fields = getFieldsForStep(currentStep, form.getValues());
+    const fields = getFieldsForStep(currentStepIndex, steps, form.getValues());
     const valid = await form.trigger(fields);
     if (!valid) {
       toast({
@@ -133,10 +148,12 @@ export default function OnboardingForm() {
       });
       return;
     }
-    setCurrentStep((s) => s + 1);
+    if (currentStepIndex < steps.length - 1) {
+      setCurrentStepIndex((s) => s + 1);
+    }
   };
 
-  const prev = () => setCurrentStep((s) => Math.max(0, s - 1));
+  const prev = () => setCurrentStepIndex((s) => Math.max(0, s - 1));
 
   const onSubmit = async (data: FormData) => {
     try {
@@ -227,12 +244,14 @@ export default function OnboardingForm() {
 
   if (!mounted) return null; 
 
+  const currentStepId = steps[currentStepIndex]?.id;
+
   return (
     <Card className="w-full max-w-xl mx-auto rounded-2xl shadow-sm border border-slate-200 bg-white my-8">
       <CardHeader className="pb-6 space-y-4">
         <div className="flex items-center justify-between">
           <span className="text-xs font-medium text-slate-500">
-            Step {currentStep + 1} of {steps.length}
+            Step {currentStepIndex + 1} of {steps.length}
           </span>
         </div>
 
@@ -241,19 +260,15 @@ export default function OnboardingForm() {
             <div
               key={index}
               className={`h-1 rounded-full flex-1 transition-colors ${
-                currentStep >= index ? 'bg-primary' : 'bg-slate-200'
+                currentStepIndex >= index ? 'bg-primary' : 'bg-slate-200'
               }`}
             />
           ))}
         </div>
 
         <div className="pt-2">
-          <CardTitle className="text-xl font-semibold">
-            {steps[currentStep].title}
-          </CardTitle>
-          <CardDescription className="text-sm text-slate-500">
-            {steps[currentStep].description}
-          </CardDescription>
+          <CardTitle className="text-xl font-semibold">{steps[currentStepIndex].title}</CardTitle>
+          <CardDescription className="text-sm text-slate-500">{steps[currentStepIndex].description}</CardDescription>
         </div>
       </CardHeader>
 
@@ -262,15 +277,15 @@ export default function OnboardingForm() {
           <CardContent className="min-h-[400px]">
             <AnimatePresence mode="wait">
               <motion.div
-                key={currentStep}
+                key={currentStepIndex}
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.3 }}
-                className="space-y-5"
+                className="space-y-5 pb-4"
               >
                 {/* STEP 1 */}
-                {currentStep === 0 && (
+                {currentStepId === 'settings' && (
                   <div className="space-y-5">
                     <SelectField form={form} name="language" label="Language" items={["English", "German"]} />
                     <SelectField form={form} name="source" label="Source" items={["Website", "Recommendation"]} />
@@ -308,26 +323,26 @@ export default function OnboardingForm() {
                 )}
 
                 {/* STEP 2 */}
-                {currentStep === 1 && (
+                {currentStepId === 'client' && (
                   <div className="space-y-5">
                     <TextField form={form} name="firstName" label="First Name" />
                     <TextField form={form} name="lastName" label="Last Name" />
                     <TextField form={form} name="email" label="Email" type="email" />
                     <PhoneField form={form} name="phone" label="Phone" />
-                    
                     <AddressGroup form={form} prefix="addr" label="Private Address" />
+                  </div>
+                )}
 
-                    {clientType === "business" && (
-                      <div className="space-y-5 pt-4 border-t">
-                        <TextField form={form} name="companyName" label="Company Name" />
-                        <AddressGroup form={form} prefix="comp" label="Company Address" />
-                      </div>
-                    )}
+                {/* STEP 2.5 (BUSINESS) */}
+                {currentStepId === 'company' && (
+                  <div className="space-y-5">
+                    <TextField form={form} name="companyName" label="Company Name" />
+                    <AddressGroup form={form} prefix="comp" label="Company Address" />
                   </div>
                 )}
 
                 {/* STEP 3 */}
-                {currentStep === 2 && (
+                {currentStepId === 'course' && (
                   <div className="space-y-5">
                     <SelectField form={form} name="courseLang" label="Course Language" items={["German", "Spanish"]} />
                     
@@ -348,7 +363,7 @@ export default function OnboardingForm() {
                 )}
 
                 {/* STEP 4 */}
-                {currentStep === 3 && (
+                {currentStepId === 'billing' && (
                   <div className="space-y-5">
                     <DateField form={form} name="courseStart" label="Course Start" />
                     <DateField form={form} name="courseEnd" label="Course End" />
@@ -364,10 +379,10 @@ export default function OnboardingForm() {
             </AnimatePresence>
           </CardContent>
           <CardFooter className="bg-white p-6 border-t flex gap-3">
-              <Button type="button" variant="outline" className="flex-1 h-11" onClick={prev} disabled={currentStep === 0}>
+              <Button type="button" variant="outline" className="flex-1 h-11" onClick={prev} disabled={currentStepIndex === 0}>
                 Back
               </Button>
-              {currentStep === steps.length - 1 ? (
+              {currentStepIndex === steps.length - 1 ? (
                 <Button type="submit" className="flex-1 h-11">Submit</Button>
               ) : (
                 <Button type="button" className="flex-1 h-11" onClick={next}>Continue</Button>
@@ -485,21 +500,22 @@ function DateField({ form, name, label }: FieldCommonProps) {
   );
 }
 
-function getFieldsForStep(step: number, values: FormData): FieldPath<FormData>[] {
-  switch (step) {
-    case 0:
+function getFieldsForStep(stepIndex: number, steps: any[], values: FormData): FieldPath<FormData>[] {
+  const stepId = steps[stepIndex]?.id;
+  switch (stepId) {
+    case 'settings':
       return ["language", "source", "contractDate", "clientType"];
-    case 1:
-      const baseFields: FieldPath<FormData>[] = [
+    case 'client':
+      return [
         "firstName", "lastName", "email", "phone", 
         "addrStreet", "addrHouse", "addrCity", "addrZip", "addrState", "addrCountry"
       ];
-      return values.clientType === "business"
-        ? [...baseFields, "companyName", "compStreet", "compHouse", "compCity", "compZip", "compState", "compCountry"]
-        : baseFields;
-    case 2:
+    case 'company':
+      // This will only be triggered if it's a business client due to dynamic steps
+      return ["companyName", "compStreet", "compHouse", "compCity", "compZip", "compState", "compCountry"];
+    case 'course':
       return ["courseLang", "level", "program", "discount", "lessons"];
-    case 3:
+    case 'billing':
       // 👇 Validate the NEW payments array
       return ["courseStart", "courseEnd", "validUntil", "payments"];
     default:
@@ -524,20 +540,20 @@ function MultiSelectField({ form, name, label, items }: FieldCommonProps & { ite
                 control={form.control}
                 name={name}
                 render={({ field }) => (
-                    <FormItem key={item} className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm">
+                  <FormItem>
+                    <label className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm cursor-pointer hover:bg-slate-50 transition-colors">
                       <FormControl>
                         <Checkbox
                           checked={(field.value as string[])?.includes(item)}
                           onCheckedChange={(checked) => {
                             const current = (field.value as string[]) || [];
-                            return checked
-                              ? field.onChange([...current, item])
-                              : field.onChange(current.filter((value: string) => value !== item));
+                            return checked ? field.onChange([...current, item]) : field.onChange(current.filter((value) => value !== item));
                           }}
                         />
                       </FormControl>
-                      <FormLabel className="font-normal cursor-pointer text-sm">{item}</FormLabel>
-                    </FormItem>
+                      <span className="font-normal text-sm">{item}</span>
+                    </label>
+                  </FormItem>
                 )}
               />
             ))}
@@ -554,11 +570,14 @@ function PhoneField({ form, name, label }: FieldCommonProps) {
     <FormField
       control={form.control}
       name={name}
-      render={({ field }) => (
+      render={({ field, fieldState }) => (
         <FormItem>
           <FormLabel className="text-sm font-medium text-slate-700">{label}</FormLabel>
           <FormControl>
-            <div className="flex h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
+            <div className={cn(
+                "flex h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2",
+                fieldState.error && "border-destructive"
+              )}>
               <PhoneInput
                 placeholder="Enter phone number"
                 value={field.value as string}
@@ -577,6 +596,8 @@ function PhoneField({ form, name, label }: FieldCommonProps) {
 }
 
 function AddressGroup({ form, prefix, label }: { form: UseFormReturn<FormData>, prefix: string, label: string }) {
+  const countryOptions = useMemo(() => countryList().getLabels(), []);
+
   return (
     <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
       <p className="text-sm font-semibold text-slate-900">{label}</p>
@@ -587,7 +608,7 @@ function AddressGroup({ form, prefix, label }: { form: UseFormReturn<FormData>, 
         <div className="col-span-4"><TextField form={form} name={`${prefix}City` as any} label="City" /></div>
         <div className="col-span-2"><TextField form={form} name={`${prefix}Zip` as any} label="Zip" /></div>
         <div className="col-span-2"><TextField form={form} name={`${prefix}State` as any} label="State" /></div>
-        <div className="col-span-2"><TextField form={form} name={`${prefix}Country` as any} label="Country" /></div>
+        <div className="col-span-4"><SelectField form={form} name={`${prefix}Country` as any} label="Country" items={countryOptions} /></div>
       </div>
     </div>
   );
@@ -604,7 +625,7 @@ function ScheduleBuilder({ form, index }: { form: UseFormReturn<FormData>; index
   const [day, setDay] = useState("Monday");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ msg: string | null; fields: Array<'start' | 'end'> }>({ msg: null, fields: [] });
 
   const currentScheduleStr = form.watch(`lessons.${index}.schedule`) || "";
   
@@ -615,21 +636,28 @@ function ScheduleBuilder({ form, index }: { form: UseFormReturn<FormData>; index
   }) : [];
 
   const addSlot = () => {
-    setError(null);
-    if (!startTime || !endTime) return setError("Enter both times.");
-    if (timeToMinutes(endTime) <= timeToMinutes(startTime)) return setError("End time must be after start.");
+    setError({ msg: null, fields: [] });
+    if (!startTime && !endTime) return setError({ msg: "Enter start and end times.", fields: ['start', 'end'] });
+    if (!startTime) return setError({ msg: "Enter a start time.", fields: ['start'] });
+    if (!endTime) return setError({ msg: "Enter an end time.", fields: ['end'] });
+
+    if (timeToMinutes(endTime) <= timeToMinutes(startTime)) {
+      return setError({ msg: "End time must be after start.", fields: ['start', 'end'] });
+    }
 
     const newStart = timeToMinutes(startTime);
     const newEnd = timeToMinutes(endTime);
 
     const hasOverlap = slots.some(slot => {
-      if (slot.day !== day) return false; 
+      if (slot.day !== day) return false;
       const existStart = timeToMinutes(slot.start);
       const existEnd = timeToMinutes(slot.end);
       return newStart < existEnd && newEnd > existStart;
     });
 
-    if (hasOverlap) return setError("❌ Time overlaps with an existing slot!");
+    if (hasOverlap) {
+      return setError({ msg: "Time overlaps with an existing slot.", fields: ['start', 'end'] });
+    }
 
     const newSlotStr = `${day} ${startTime}-${endTime}`;
     const newSchedule = currentScheduleStr ? `${currentScheduleStr}, ${newSlotStr}` : newSlotStr;
@@ -668,15 +696,15 @@ function ScheduleBuilder({ form, index }: { form: UseFormReturn<FormData>; index
         </div>
         <div className="w-24">
            <label className="text-[10px] text-slate-500 uppercase font-bold">Start</label>
-           <Input type="time" className="h-9" value={startTime} onChange={e => setStartTime(e.target.value)} />
+           <Input type="time" className={cn("h-9", error.fields.includes('start') && "border-destructive focus-visible:ring-destructive")} value={startTime} onChange={e => setStartTime(e.target.value)} />
         </div>
         <div className="w-24">
            <label className="text-[10px] text-slate-500 uppercase font-bold">End</label>
-           <Input type="time" className="h-9" value={endTime} onChange={e => setEndTime(e.target.value)} />
+           <Input type="time" className={cn("h-9", error.fields.includes('end') && "border-destructive focus-visible:ring-destructive")} value={endTime} onChange={e => setEndTime(e.target.value)} />
         </div>
         <Button type="button" size="sm" onClick={addSlot} className="h-9 px-3 bg-slate-900 text-white hover:bg-slate-800">+</Button>
       </div>
-      {error && <p className="text-xs text-red-500 font-medium mt-1">{error}</p>}
+      {error.msg && <p className="text-xs text-red-500 font-medium mt-1">{error.msg}</p>}
     </div>
   );
 }
@@ -769,14 +797,32 @@ function PaymentBuilder({ form, calculatedTotal }: { form: UseFormReturn<FormDat
       {fields.map((field, index) => (
         <div key={field.id} className="flex gap-3 items-end">
           <div className="w-10 pt-3 text-xs font-bold text-slate-400">#{index + 1}</div>
-          <div className="flex-1">
-            <FormLabel className="text-[10px] uppercase text-slate-500 font-bold">Date</FormLabel>
-            <Input type="date" className="h-10 bg-white" {...form.register(`payments.${index}.date` as const, { required: true })} />
-          </div>
-          <div className="flex-1">
-            <FormLabel className="text-[10px] uppercase text-slate-500 font-bold">Amount (CHF)</FormLabel>
-            <Input type="number" className="h-10 bg-white" {...form.register(`payments.${index}.amount` as const, { valueAsNumber: true, required: true })} />
-          </div>
+          <FormField
+            control={form.control}
+            name={`payments.${index}.date`}
+            render={({ field }) => (
+              <FormItem className="flex-1">
+                <FormLabel className="text-[10px] uppercase text-slate-500 font-bold">Date</FormLabel>
+                <FormControl>
+                  <Input type="date" className="h-10 bg-white" {...field} value={field.value ?? ""} />
+                </FormControl>
+                <FormMessage className="text-xs" />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name={`payments.${index}.amount`}
+            render={({ field }) => (
+              <FormItem className="flex-1">
+                <FormLabel className="text-[10px] uppercase text-slate-500 font-bold">Amount (CHF)</FormLabel>
+                <FormControl>
+                  <Input type="number" className="h-10 bg-white" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : +e.target.value)} value={field.value ?? ''} />
+                </FormControl>
+                <FormMessage className="text-xs" />
+              </FormItem>
+            )}
+          />
           {fields.length > 1 && (
             <Button type="button" variant="destructive" size="icon" className="h-10 w-10 shrink-0" onClick={() => remove(index)}>✕</Button>
           )}
